@@ -4,10 +4,14 @@ import path from 'path';
 import PDFParser from 'pdf2json';
 
 const jsonOutputFile = path.join(path.resolve(), 'usd_inr_rates.json');
-const baseUrl = 'https://raw.githubusercontent.com/skbly7/sbi-tt-rates-historical/master/';
+const baseUrl = 'https://raw.githubusercontent.com/sachin-hg/taxation-reports/sbi-rates/main/';
 
-const getUrl = (year, month, date, time = '19:15') =>
-    `${baseUrl}${year}/${month}/${year}-${month}-${date}-${time}.pdf`;
+const getUrl = (year, month, date, time) => {
+    if (!time) {
+        return `${baseUrl}${year}/${month}/${year}-${month}-${date}.pdf`
+    }
+    return `${baseUrl}${year}/${month}/${year}-${month}-${date}-${time}.pdf`
+};
 
 async function downloadPDF(url) {
     try {
@@ -91,6 +95,7 @@ export async function populateUsdToInrRates({startDate: startDateInput, endDate:
 
         const [year, month, day] = date.split('-');
         const fileUrls = [
+            getUrl(year, month, day),
             getUrl(year, month, day, '19:15'),
             getUrl(year, month, day, '14:15')
         ];
