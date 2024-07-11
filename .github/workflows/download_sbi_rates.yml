@@ -16,7 +16,7 @@ jobs:
 
     - name: Get current date and time
       id: date
-      run: echo "timestamp=$(date -u +'%Y/%m/%Y-%m-%d-%H:%M')" >> $GITHUB_ENV
+      run: echo "timestamp=$(date -u +'%Y/%m/%Y-%m-%d')" >> $GITHUB_ENV
 
     - name: Download PDF
       run: |
