@@ -1,3 +1,3 @@
-import {populateUsdToInrRates} from "@/utils/updateConversionRate.mjs";
+import {populateUsdToInrRates} from "./src/utils/updateConversionRate.mjs";
 
 populateUsdToInrRates()
