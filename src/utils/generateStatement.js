@@ -221,14 +221,34 @@ const processTransactions = (transactions, startDate, endDate) => {
     return holdings.filter(holding => holding.closingUnits > 0 || holding.openingUnits > 0);
 };
 
-const convertToINR = (usdValue, conversionDate) => {
-    const date = moment(conversionDate).format('YYYY-MM-DD');
+const findRateRecursively = (date) => {
+    const formattedDate = moment(date).format('YYYY-MM-DD');
 
-    if (!conversionRates[date]?.buyRate) {
-        console.log('conversion rate not available for ', conversionDate);
+    if (conversionRates[formattedDate]?.buyRate) {
+        return conversionRates[formattedDate].buyRate;
+    } else {
+        console.log('conversion rate not available for ', formattedDate);
+        const previousDate = moment(formattedDate).subtract(1, 'days');
+
+        if (previousDate.isBefore(moment('2020-12-31'))) { // assuming this is the earliest date you have data for
+            console.error('No conversion rate available for any prior dates');
+            return null;
+        }
+
+        return findRateRecursively(previousDate);
     }
-    return conversionRates[date].buyRate * usdValue;
 };
+
+const convertToINR = (usdValue, conversionDate) => {
+    const buyRate = findRateRecursively(conversionDate);
+
+    if (buyRate) {
+        return buyRate * usdValue;
+    } else {
+        return null;
+    }
+};
+
 
 const calculatePeakValues = async (holdings, stockHoldingsMap, startDate, endDate, currency) => {
     const startUnix = startDate.unix();
