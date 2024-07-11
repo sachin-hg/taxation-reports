@@ -63,7 +63,7 @@ async function writeDataToJson(data) {
     console.log(`Data written to ${jsonOutputFile}`);
 }
 
-export async function populateUsdToInrRates({startDate: startDateInput, endDate: endDateInput}) {
+export async function populateUsdToInrRates({startDate: startDateInput, endDate: endDateInput} = {}) {
     const defaultStartDate = new Date('2020-06-03');
     const defaultEndDate = new Date();
 
