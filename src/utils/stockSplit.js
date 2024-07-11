@@ -1,5 +1,6 @@
 import yf from 'yahoo-finance2'
 import merge from 'lodash/merge'
+import moment from 'moment'
 // Function to get stock split history for a single ticker
 const getStockSplitHistoryForTicker = async (ticker) => {
     try {
@@ -38,7 +39,7 @@ const getStockSplitHistory = async (tickers) => {
 //     console.log(result);
 // });
 
-const moment = require('moment');
+
 
 // Example of async getStockSplitHistory function
 // async function getStockSplitHistory(tickers) {

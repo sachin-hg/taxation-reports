@@ -356,7 +356,7 @@ const generatePAndL = (holdings, transactions, bankStatements, startDate, endDat
     const longTerm = []
     const interest = []
     bankStatements.forEach(txn => {
-        const {Date, Action, Amount, Account} = txn
+        const {Date, Action, Amount} = txn
         const date = moment(Date)
         if (Action === 'INTEREST' && date.isBetween(startDate, endDate, null, '[]')) {
             interest.push({
@@ -508,7 +508,7 @@ const createAccountStatement = (transactions, dividends, bankStatements, startDa
         let amountPaid = 0
         let peakDate = null
         txns.forEach(txn => {
-            const {Action, DateObj, Date, TotalAmount, Amount, Dividend, Tax, type} = txn
+            const {Action, DateObj, Date, TotalAmount, Amount, type} = txn
             let amount = Amount || TotalAmount || 0
             switch (Action) {
                 case 'ADD_MONEY':
@@ -608,7 +608,6 @@ export const generateHoldingStatement = async ({
 
     let startDate
     let endDate
-    let outputPath = './pnl.xls'
     let currency = 'USD'
 
     switch (type) {
@@ -619,7 +618,6 @@ export const generateHoldingStatement = async ({
         case 'FA':
             startDate = `${year}-01-01`
             endDate = `${year}-12-31`
-            outputPath = './fa.xls'
             currency = 'INR'
             break
     }
@@ -714,43 +712,6 @@ export const generateHoldingStatement = async ({
 // const startDate = '2022-04-01';
 // const endDate = '2023-03-31';
 // const outputPath = './SCHEDULE_FA_ROHAN_2023.xls';
-const accounts = {
-    "50386723": {
-        "name": "MORGAN STANLEY CAPITAL MANAGEMENT LLC\nE*TRADE SECURITIES LLC",
-        "address": "PX BOX 0484 Jersey City NJ ",
-        "zip": "07303-0484",
-        "num": "50386723",
-        "openingDate": "2021-02-10"
-    },
-    "499 339908": {
-        "name": "MORGAN STANLEY CAPITAL MANAGEMENT LLC\nMorgan Stanley Smith Barney LLC.",
-        "address": "1 NEW YORK PLAZA 40TH FLOOR\nNEW YORK, NY",
-        "zip": "10004",
-        "num": "499 339908",
-        "openingDate": "2023-09-01"
-    },
-    "INDW001INZU000216": {
-        "name": "DRIVEWEALTH, LLC",
-        "address": "Liberty Street, New York, NY",
-        "zip": "10005",
-        "num": "INDW001INZU000216",
-        "openingDate": "2021-06-26"
-    },
-    "WREV000009": {
-        "name": "DRIVEWEALTH, LLC",
-        "address": "Liberty Street, New York, NY",
-        "zip": "10005",
-        "num": "WREV000009",
-        "openingDate": "2024-04-29"
-    },
-    "6CA68772": {
-        "name": "Apex Clearing",
-        "address": "One Dallas Center 350 North St Paul, Ste 1300, Dallas, TX",
-        "zip": "75201",
-        "num": "6CA68772",
-        "openingDate": "2021-09-09"
-    }
-}
 // generateHoldingStatement(transactionPath, dividendPath, bankPath, '2023-04-01', '2024-03-31', null, pAndLOutputPath, 'USD', accounts)
 //     .then(() => {
 //         console.log(`Holdings statement from ${startDate} to ${endDate} has been generated successfully.`);
