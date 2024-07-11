@@ -32,8 +32,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run updateConversionRate.mjs
-        run: node --experimental-modules src/utils/updateConversionRate.mjs
+      - name: Run autoUpdateRates.mjs
+        run: node --experimental-modules autoUpdateRates.mjs
 
       - name: Commit and push changes
         run: |
