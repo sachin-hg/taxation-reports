@@ -79,7 +79,7 @@ export const getTickerChangeHistory = async (tickers, cacheOnly = false) => {
         }
     }
 
-    await saveCache(cache); // Save the cache to the file
+    // await saveCache(cache); // Save the cache to the file
 
     return result;
 };
