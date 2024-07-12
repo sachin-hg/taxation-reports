@@ -1,29 +1,27 @@
-import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import PDFParser from 'pdf2json';
 
 const jsonOutputFile = path.join(path.resolve(), 'usd_inr_rates.json');
-const baseUrl = 'https://raw.githubusercontent.com/sachin-hg/taxation-reports/sbi-rates/main/';
+const basePath = path.join(path.resolve(), 'sbi-rates');
 
-const getUrl = (year, month, date, time) => {
+const getFilePath = (year, month, date, time) => {
     if (!time) {
-        return `${baseUrl}${year}/${month}/${year}-${month}-${date}.pdf`
+        return path.join(basePath, `${year}/${month}/${year}-${month}-${date}.pdf`);
     }
-    return `${baseUrl}${year}/${month}/${year}-${month}-${date}-${time}.pdf`
+    return path.join(basePath, `${year}/${month}/${year}-${month}-${date}-${time}.pdf`);
 };
 
-async function downloadPDF(url) {
+async function readPDF(filePath) {
     try {
-        const response = await axios.get(url, { responseType: 'arraybuffer' });
-        return response.data;
+        return fs.readFileSync(filePath);
     } catch (error) {
         return null;
     }
 }
 
 async function extractRatesFromPDF(pdfBuffer, fileName, date) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         try {
             const pdfParser = new PDFParser();
             const tableTitle = "CARD RATES FOR TRANSACTIONS BELOW Rs. 10 LACS";
@@ -95,18 +93,18 @@ export async function populateUsdToInrRates({startDate: startDateInput, endDate:
 
         const [year, month, day] = date.split('-');
         const fileUrls = [
-            getUrl(year, month, day),
-            getUrl(year, month, day, '19:15'),
-            getUrl(year, month, day, '14:15')
+            getFilePath(year, month, day),
+            getFilePath(year, month, day, '19:15'),
+            getFilePath(year, month, day, '14:15')
         ];
 
         let pdfBuffer = null;
         let fileName = null;
         let rates = null;
 
-        for (const url of fileUrls) {
-            fileName = path.basename(url);
-            pdfBuffer = await downloadPDF(url);
+        for (const filePath of fileUrls) {
+            fileName = path.basename(filePath);
+            pdfBuffer = await readPDF(filePath);
             if (pdfBuffer) {
                 rates = await extractRatesFromPDF(pdfBuffer, fileName, date);
                 if (rates) {
