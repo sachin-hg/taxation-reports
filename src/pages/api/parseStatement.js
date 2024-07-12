@@ -4,9 +4,9 @@ import { IncomingForm } from 'formidable';
 export const config = {
     api: {
         bodyParser: false,
+        sizeLimit: '30mb'
     },
 };
-
 
 const handler = async (req, res) => {
     const form = new IncomingForm();
