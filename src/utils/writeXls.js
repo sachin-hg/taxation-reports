@@ -8,6 +8,11 @@ const createWorksheet = (workbook, content, sheetName) => {
         const title = table.title || ''; // Default to empty title if not present
         const type = table.type || 'VERTICAL_TABLE'; // Default to HORIZONTAL_TABLE if not present
         const data = table.data;
+        try {
+            const headers = table.headers || Object.keys(data[0])
+        } catch (e) {
+            console.log(e, table, sheetName)
+        }
         const headers = table.headers || Object.keys(data[0])
 
         if (title) {
