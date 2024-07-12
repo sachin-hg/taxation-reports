@@ -19,6 +19,8 @@
   ],
   "rules": {
     "no-unused-vars": "off",
+    "no-useless-escape": "off",
+    "no-case-declarations": "off",
     "no-undef": "off",
     "react/prop-types": "off",
     "react/react-in-jsx-scope": "off",
