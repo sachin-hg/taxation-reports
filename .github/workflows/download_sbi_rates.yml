@@ -3,8 +3,7 @@ name: Download SBI Rates PDF and Update Conversion Rates
 on:
   schedule:
     - cron: '15 14 * * *'
-    - cron: '15 19 * * *'
-  workflow_dispatch:
+    - cron: '10 19 * * *'
 
 jobs:
   download-pdf:
