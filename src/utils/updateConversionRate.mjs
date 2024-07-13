@@ -5,11 +5,12 @@ import PDFParser from 'pdf2json';
 
 const jsonOutputFile = path.join(path.resolve(), 'usd_inr_rates.json');
 const baseUrl = 'https://raw.githubusercontent.com/sachin-hg/taxation-reports/main/sbi-rates/';
-const getUrl = (year, month, date, time) => {
+const baseUrl2 = 'https://raw.githubusercontent.com/skbly7/sbi-tt-rates-historical/master/'
+const getUrl = (year, month, date, {base = baseUrl, time} = {}) => {
     if (!time) {
-        return `${baseUrl}${year}/${month}/${year}-${month}-${date}.pdf`
+        return `${base}${year}/${month}/${year}-${month}-${date}.pdf`
     }
-    return `${baseUrl}${year}/${month}/${year}-${month}-${date}-${time}.pdf`
+    return `${base}${year}/${month}/${year}-${month}-${date}-${time}.pdf`
 };
 
 async function downloadPDF(url) {
@@ -68,8 +69,6 @@ export async function populateUsdToInrRates({startDate: startDateInput, endDate:
     const defaultStartDate = new Date('2021-01-01');
     const defaultEndDate = new Date();
 
-    console.log(defaultEndDate.toString(), '********************')
-
     const startDate = startDateInput ? new Date(startDateInput) : defaultStartDate;
     const endDate = endDateInput ? new Date(endDateInput) : defaultEndDate;
 
@@ -99,8 +98,11 @@ export async function populateUsdToInrRates({startDate: startDateInput, endDate:
         const [year, month, day] = date.split('-');
         const fileUrls = [
             getUrl(year, month, day),
-            getUrl(year, month, day, '19:15'),
-            getUrl(year, month, day, '14:15')
+            getUrl(year, month, day, {time: '19:15'}),
+            getUrl(year, month, day, {time: '14:15'}),
+            getUrl(year, month, day, {time: '19:15', base: baseUrl2}),
+            getUrl(year, month, day, {time: '14:15', base: baseUrl2}),
+
         ];
 
         let pdfBuffer = null;
