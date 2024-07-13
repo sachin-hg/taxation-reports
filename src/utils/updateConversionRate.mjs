@@ -64,8 +64,11 @@ async function writeDataToJson(data) {
 }
 
 export async function populateUsdToInrRates({startDate: startDateInput, endDate: endDateInput} = {}) {
+
     const defaultStartDate = new Date('2021-01-01');
     const defaultEndDate = new Date();
+
+    console.log(defaultEndDate.toString(), '********************')
 
     const startDate = startDateInput ? new Date(startDateInput) : defaultStartDate;
     const endDate = endDateInput ? new Date(endDateInput) : defaultEndDate;
