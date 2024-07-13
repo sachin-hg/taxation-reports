@@ -19,12 +19,12 @@ jobs:
         run: echo "timestamp=$(date -u +'%Y/%m/%Y-%m-%d')" >> $GITHUB_ENV
 
       - name: Clean workspace
-          run: |
-            git config --global user.name 'github-actions[bot]'
-            git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-            git checkout .
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git checkout .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download PDF
         run: |
