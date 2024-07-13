@@ -18,7 +18,7 @@ async function downloadPDF(url) {
         const response = await axios.get(url, { responseType: 'arraybuffer' });
         return response.data;
     } catch (error) {
-        console.log(error, url)
+        console.log('downloading pdf failed', url)
         return null;
     }
 }
@@ -29,7 +29,7 @@ async function extractRatesFromPDF(pdfBuffer, fileName, date) {
             const pdfParser = new PDFParser();
             const tableTitle = "CARD RATES FOR TRANSACTIONS BELOW Rs. 10 LACS";
             pdfParser.on('pdfParser_dataError', errData => {
-                console.log(errData, fileName, date);
+                console.log('pdf parsing data error failed', fileName, date);
                 resolve(null);
             });
             pdfParser.on('pdfParser_dataReady', pdfData => {
@@ -48,12 +48,12 @@ async function extractRatesFromPDF(pdfBuffer, fileName, date) {
                 }
             });
             pdfParser.on('error', errData => {
-                console.log(errData, fileName, date);
+                console.log('pdf parse error', fileName, date);
                 resolve(null);
             });
             pdfParser.parseBuffer(pdfBuffer);
         } catch (e) {
-            console.log(fileName, date);
+            console.log('extractRatesFromPDF error', fileName, date);
             resolve(null);
         }
     });
