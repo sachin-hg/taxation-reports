@@ -17,6 +17,7 @@ async function downloadPDF(url) {
         const response = await axios.get(url, { responseType: 'arraybuffer' });
         return response.data;
     } catch (error) {
+        console.log(error, url)
         return null;
     }
 }
