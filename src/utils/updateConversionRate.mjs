@@ -27,7 +27,7 @@ async function extractRatesFromPDF(pdfBuffer, fileName, date) {
     return new Promise((resolve, reject) => {
         try {
             const pdfParser = new PDFParser();
-            const tableTitle = "CARD RATES FOR TRANSACTIONS BELOW Rs. 10 LACS";
+            const tableTitle = "CARD RATES FOR TRANSACTIONS BETWEEN Rs. 10 LACS";
             pdfParser.on('pdfParser_dataError', errData => {
                 console.log('pdf parsing data error failed', fileName, date);
                 resolve(null);
