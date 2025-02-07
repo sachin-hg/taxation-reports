@@ -27,13 +27,16 @@ async function extractRatesFromPDF(pdfBuffer, fileName, date) {
     return new Promise((resolve, reject) => {
         try {
             const pdfParser = new PDFParser();
-            const tableTitle = "CARD RATES FOR TRANSACTIONS BETWEEN Rs. 10 LACS";
+            // CARD RATES FOR TRANSACTIONS BETWEEN Rs. 10 LACS AND Rs. 20 LACS. (To be used as reference rates)
+            // CARD RATES FOR TRANSACTIONS BETWEEN Rs. 10 LACS AND 
+            // CARD RATES FOR TRANSACTIONS BETWEEN Rs. 10 LA
+            const tableTitle = "CARD RATES FOR TRANSACTIONS BETWEEN Rs. 10 LA";
             pdfParser.on('pdfParser_dataError', errData => {
                 console.log('pdf parsing data error failed', fileName, date);
                 resolve(null);
             });
             pdfParser.on('pdfParser_dataReady', pdfData => {
-                const page = pdfData.Pages.find(page => page.Texts.find(x => decodeURIComponent(x.R[0].T) === tableTitle));
+                const page = pdfData.Pages.find(page => page.Texts.find(x => decodeURIComponent(x.R[0].T).includes(tableTitle)));
 
                 try {
                     const index = page.Texts.findIndex(x => !isNaN(x.R[0].T));
