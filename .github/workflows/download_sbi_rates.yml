@@ -28,7 +28,7 @@ jobs:
         run: |
           TIMESTAMP=${{ env.timestamp }}
           mkdir -p sbi-rates/${TIMESTAMP%/*}
-          curl -o sbi-rates/${TIMESTAMP}.pdf https://www.sbi.co.in/documents/16012/1400784/FOREX_CARD_RATES.pdf
+          curl -L -o sbi-rates/${TIMESTAMP}.pdf https://sbi.co.in/documents/16012/1400784/FOREX_CARD_RATES.pdf
 
       - name: Commit and push changes
         run: |
