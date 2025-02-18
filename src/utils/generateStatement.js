@@ -8,6 +8,21 @@ import {getTickerChangeHistory} from './tickerChange.js'
 import {fetchStockPrice} from './stockPrice.js'
 import {fetchCompanyDetails} from './companyDetails.js'
 import {generateExcelFromJson} from './writeXls.js'
+import {getDividendsForTickers} from './dividends.js'
+
+const ADD = 'add'
+const SUBTRACT = 'subtract'
+function preciseMath(operation, a, b) {
+    const scale = 1e9;
+    const aScaled = Math.round(a * scale);
+    const bScaled = Math.round(b * scale);
+
+    let result;
+    if (operation === ADD) result = aScaled + bScaled;
+    if (operation === SUBTRACT) result = aScaled - bScaled;
+
+    return (result / scale).toFixed(9);
+}
 
 const assignUniqueIds = (transactions) => {
     return transactions.map(transaction => ({
@@ -24,7 +39,7 @@ const createStockHoldingsMap = (transactions, startDate, endDate) => {
         const transactions = transactionsGroupedByStock[Stock];
         const buyTransactions = transactions
             .filter(transaction => transaction.Action === 'BUY')
-            .map(transaction => ({ ...transaction, availableUnits: parseFloat(transaction.Unit) }));
+            .map(transaction => ({ ...transaction, availableUnits: transaction.Unit }));
         let totalUnits = 0;
         let currentBuyTransactionIndexForSell = 0;
         let lastEntryDateString;
@@ -43,31 +58,33 @@ const createStockHoldingsMap = (transactions, startDate, endDate) => {
             }
 
             if (Action === 'BUY') {
-                totalUnits += parseFloat(Unit);
+                totalUnits = preciseMath(ADD, totalUnits, Unit)
                 stockHoldingsMap[Stock][dateString].totalUnitsHeld = totalUnits;
 
                 let previousData = { ...(stockHoldingsMap[Stock][lastEntryDateString]?.unitsHeldByTransactionId || {}) };
-                previousData = { ...previousData, [id]: parseFloat(Unit) };
+                previousData = { ...previousData, [id]: Unit };
 
                 stockHoldingsMap[Stock][dateString].unitsHeldByTransactionId = previousData;
                 lastEntryDateString = dateString;
             } else if (Action === 'SELL') {
-                let unitsToSell = parseFloat(Unit);
+                // let unitsToSell = parseFloat(Unit);
+                let unitsToSell = Unit;
 
-                totalUnits -= parseFloat(Unit);
+                totalUnits = preciseMath(SUBTRACT, totalUnits, Unit);
                 stockHoldingsMap[Stock][dateString].totalUnitsHeld = totalUnits;
                 while (unitsToSell > 0) {
                     const currentBuyTransaction = buyTransactions[currentBuyTransactionIndexForSell];
                     let { availableUnits, id } = currentBuyTransaction;
-                    const unitsAvailable = Math.min(availableUnits, unitsToSell);
-                    currentBuyTransaction.availableUnits -= unitsAvailable;
-                    unitsToSell -= unitsAvailable;
+                    // const unitsAvailable = Math.min(availableUnits, unitsToSell);
+                    const unitsAvailable = parseFloat(availableUnits) >= parseFloat(unitsToSell) ? unitsToSell : availableUnits
+                    currentBuyTransaction.availableUnits = preciseMath(SUBTRACT, currentBuyTransaction.availableUnits, unitsAvailable);
+                    unitsToSell = preciseMath(SUBTRACT, unitsToSell, unitsAvailable);
 
                     let previousData = { ...(stockHoldingsMap[Stock][lastEntryDateString]?.unitsHeldByTransactionId || {}) };
-                    previousData = { ...previousData, [id]: previousData[id] - unitsAvailable };
+                    previousData = { ...previousData, [id]: preciseMath(SUBTRACT, previousData[id], unitsAvailable) };
                     stockHoldingsMap[Stock][dateString].unitsHeldByTransactionId = previousData;
 
-                    if (currentBuyTransaction.availableUnits === 0) {
+                    if (parseFloat(currentBuyTransaction.availableUnits) === 0) {
                         currentBuyTransactionIndexForSell++;
                     }
 
@@ -132,17 +149,34 @@ const calculateSharesHeldOnDateByTransactionId = (stockHoldingsMap, date, stock,
     return stockHoldingsMap[stock][dateString]?.unitsHeldByTransactionId[transactionId] || 0;
 };
 
-const calculateDividends = (holdings, stockHoldingsMap, dividends, startDate, endDate) => {
+const calculateDividends = async (holdings, stockHoldingsMap, dividends, startDate, endDate) => {
+    const map = {}
+
     for (const dividend of dividends) {
         const dividendDate = moment(dividend.Date);
         if (dividendDate.isBetween(startDate, endDate, null, '[]')) {
-            const sharesHeldOnDividendDate = calculateSharesHeldOnDate(stockHoldingsMap, dividendDate, dividend.Stock);
-            if (sharesHeldOnDividendDate > 0) {
-                const dividendPerUnit = parseFloat(dividend.Dividend) / sharesHeldOnDividendDate;
+            const arr = map[dividend.Stock] || [];
+            map[dividend.Stock] = arr;
+            arr.push(dividendDate);
+        }
+    }
 
+    const dateMap = await getDividendsForTickers(map)
+
+    for (const dividend of dividends) {
+        const dividendDate = moment(dividend.Date);
+        if (dividendDate.isBetween(startDate, endDate, null, '[]')) {
+            let {date: divDeclareDate = dividendDate.format('YYYY-MM-DD'), perShare} = dateMap[dividend.Stock][dividendDate.format('YYYY-MM-DD')] || {};
+            divDeclareDate = moment(divDeclareDate);
+            const sharesHeldOnDividendDate = calculateSharesHeldOnDate(stockHoldingsMap, divDeclareDate, dividend.Stock);
+            if (parseFloat(sharesHeldOnDividendDate) > 0) {
+                const dividendPerUnit = parseFloat(dividend.Dividend) / sharesHeldOnDividendDate;
+                if (dividendPerUnit.toFixed(2) !== perShare.toFixed(2)) {
+                    console.warn(`Dividend per unit mismatch for ${dividend.Stock} on ${dividendDate.format('YYYY-MM-DD')}. Expected: ${perShare}, Actual: ${dividendPerUnit}`);
+                }
                 for (const holding of holdings) {
-                    if (holding.stock === dividend.Stock && moment(holding.buyDate).isSameOrBefore(dividendDate)) {
-                        const holdingUnits = calculateSharesHeldOnDateByTransactionId(stockHoldingsMap, dividendDate, dividend.Stock, holding.id);
+                    if (holding.stock === dividend.Stock && moment(holding.buyDate).isSameOrBefore(divDeclareDate)) {
+                        const holdingUnits = calculateSharesHeldOnDateByTransactionId(stockHoldingsMap, divDeclareDate, dividend.Stock, holding.id);
                         const holdingDividend = dividendPerUnit * holdingUnits;
                         holding.dividend = (parseFloat(holding.dividend || 0) + holdingDividend).toFixed(10);
                     }
@@ -170,16 +204,16 @@ const processTransactions = (transactions, startDate, endDate) => {
             holdings.push({
                 stock: Stock,
                 buyDate: Date,
-                quantity: parseFloat(Unit),
+                quantity: Unit,
                 initialValue: parseFloat(TotalAmount),
-                openingUnits: parseFloat(Unit),
-                closingUnits: parseFloat(Unit),
+                openingUnits: Unit,
+                closingUnits: Unit,
                 amountReceivedFromSelling: 0,
                 salesAttributed: [],
                 id: id
             });
         } else if (Action === 'SELL') {
-            const unitsToSell = parseFloat(Unit);
+            const unitsToSell = Unit;
             sales[Stock] = sales[Stock] || [];
             sales[Stock].push({ date, unitsToSell, amount: parseFloat(TotalAmount), id });
         }
@@ -192,25 +226,26 @@ const processTransactions = (transactions, startDate, endDate) => {
             let unitsToSell = sale.unitsToSell;
 
             for (const holding of holdings) {
-                if (holding.stock === stock && unitsToSell > 0) {
-                    const unitsAvailable = Math.min(holding.closingUnits, unitsToSell);
+                if (holding.stock === stock && parseFloat(unitsToSell) > 0) {
+                    // const unitsAvailable = Math.min(holding.closingUnits, unitsToSell);
+                    const unitsAvailable = parseFloat(holding.closingUnits) >= parseFloat(unitsToSell) ? unitsToSell : holding.closingUnits;
                     const saleDate = sale.date;
 
-                    if (saleDate.isBetween(startDate, endDate, null, '[]') && unitsAvailable > 0) {
+                    if (saleDate.isBetween(startDate, endDate, null, '[]') && parseFloat(unitsAvailable) > 0) {
                         holding.amountReceivedFromSelling += unitsAvailable * (sale.amount / sale.unitsToSell);
                         holding.salesAttributed.push({ date: saleDate.format('YYYY-MM-DD'), unitsSold: unitsAvailable, saleId: sale.id });
                     }
 
-                    if (saleDate.isBefore(startDate) && unitsAvailable > 0) {
+                    if (saleDate.isBefore(startDate) && parseFloat(unitsAvailable) > 0) {
                         const unitPrice = holding.initialValue / holding.openingUnits;
-                        holding.initialValue -= unitPrice * unitsAvailable;
-                        holding.openingUnits -= unitsAvailable;
+                        holding.initialValue = holding.initialValue - unitPrice * unitsAvailable;
+                        holding.openingUnits = preciseMath(SUBTRACT, holding.openingUnits, unitsAvailable);
                     }
 
-                    holding.closingUnits -= unitsAvailable;
-                    unitsToSell -= unitsAvailable;
+                    holding.closingUnits = preciseMath(SUBTRACT, holding.closingUnits, unitsAvailable);
+                    unitsToSell = preciseMath(SUBTRACT, unitsToSell, unitsAvailable);
 
-                    if (unitsToSell <= 0) {
+                    if (parseFloat(unitsToSell) <= 0) {
                         break;
                     }
                 }
@@ -218,7 +253,7 @@ const processTransactions = (transactions, startDate, endDate) => {
         }
     }
 
-    return holdings.filter(holding => holding.closingUnits > 0 || holding.openingUnits > 0);
+    return holdings.filter(holding => parseFloat(holding.closingUnits) > 0 || parseFloat(holding.openingUnits) > 0);
 };
 
 const findRateRecursively = (date) => {
@@ -522,7 +557,7 @@ const createAccountStatement = (transactions, dividends, bankStatements, startDa
                             peakDate = DateObj
                         }
                         closingBalance = balance
-                        if (Action !== 'ADD_MONEY') {
+                        if (Action === 'INTEREST') {
                             amountPaid += convertToINR(amount, Date)
                         }
                     }
@@ -593,6 +628,22 @@ const createAccountStatement = (transactions, dividends, bankStatements, startDa
     return {acct, a2}
 
 }
+export const mergeDividendsAndTax = (dividends) => {
+    const res = []
+    const map = {}
+    dividends.map(({Dividend, Account, Stock, Date, Tax, ...rest}) => {
+        const key = `${Stock}_${Date}_${Account}`
+        let obj = map[key]
+        if (!map[key]) {
+            obj = {Account, Stock, Date, ...rest}
+            map[key] = obj
+            res.push(obj)
+        }
+        obj.Dividend = (parseFloat(obj.Dividend || 0) + parseFloat(Dividend)).toFixed(2)
+        obj.Tax = (parseFloat(obj.Tax || 0) + parseFloat(Tax)).toFixed(2)
+    })
+    return res
+}
 export const generateHoldingStatement = async ({
                                             stockTransactions: transactions,
                                             dividends,
@@ -648,7 +699,7 @@ export const generateHoldingStatement = async ({
     dividends = dividends.sort((a, b) => moment(a.Date) - moment(b.Date));
     bankStatements = bankStatements.sort((a, b) => moment(a.Date) - moment(b.Date));
 
-
+    dividends = mergeDividendsAndTax(dividends)
 
     const dividendStatement = createDividendStatement(dividends, startMoment, endMoment)
 
@@ -663,7 +714,7 @@ export const generateHoldingStatement = async ({
     // Create stock holdings map
     const stockHoldingsMap = createStockHoldingsMap(transactions, startMoment, endMoment);
 
-    const holdingsWithDividends = calculateDividends(allHoldings, stockHoldingsMap, dividends, startMoment, endMoment);
+    const holdingsWithDividends = await calculateDividends(allHoldings, stockHoldingsMap, dividends, startMoment, endMoment);
     const holdingsWithPeakValues = await calculatePeakValues(holdingsWithDividends, stockHoldingsMap, startMoment, endMoment, currency);
     const finalHoldings = await calculateClosingBalance(holdingsWithPeakValues, stockHoldingsMap, endMoment, currency);
     const pAndL = generatePAndL(finalHoldings, transactions, bankStatements, startMoment, endMoment)

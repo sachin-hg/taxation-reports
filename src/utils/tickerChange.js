@@ -3,7 +3,7 @@ import path from 'path'
 const POLYGON_API_KEY = 'q1iUvcpID4C5IpxXbgfZOehxYH99V_G1'; // Replace with your Polygon.io API key
 
 const CACHE_FILE = path.resolve(__dirname, 'ticker_changes_cache.json');
-
+// https://api.polygon.io/vX/reference/tickers/V/events?types=ticker_change&apiKey=q1iUvcpID4C5IpxXbgfZOehxYH99V_G1
 // Function to fetch ticker changes for a given symbol
 const fetchTickerChanges = async (symbol) => {
     const url = `https://api.polygon.io/vX/reference/tickers/${symbol}/events?types=ticker_change&apiKey=${POLYGON_API_KEY}`;

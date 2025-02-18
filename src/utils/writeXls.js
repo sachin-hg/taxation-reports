@@ -55,7 +55,7 @@ const createWorksheet = (workbook, content, sheetName) => {
             });
 
             data.forEach(obj => {
-                const row = Object.values(obj);
+                const row = headers.map(header => obj[header]);
                 worksheet.addRow(row);
             });
         }

@@ -1,6 +1,7 @@
 import {generateExcelFromJson} from './writeXls.js'
 import PDFParser from 'pdf2json'
 import moment from 'moment'
+import momentT from 'moment-timezone'
 import xlsx from 'xlsx'
 // const directoryPath = '/Users/sachinagrawal/Desktop/tax 23-24/sachin/Groww reports 2023-24/'; // Replace with your directory path
 // const directoryPath = '/Users/sachinagrawal/Desktop/tax 23-24/sachin/US Stock - IndMoney Account Statement/'
@@ -47,15 +48,42 @@ const parseXlsFile = (filePath) => {
     };
 };
 
+const parseETradeFinalXlsFile = (filePath) => {
+    const workbook = xlsx.readFile(filePath);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = xlsx.utils.sheet_to_json(worksheet, { header: 1 });
+
+    const accountNumber = '499 339908'; // Assuming 'ACCT_NUM' is in the third row, second column
+    const transactions = [];
+
+    jsonData.slice(1).forEach(row => { // Assuming transactions start from the 1st row
+        if (row.length > 0) { // Skip empty rows
+            const [date, action, amount] = row;
+            transactions.push({
+                date: xlsx.SSF.format('yyyy-mm-dd', date), // Removing time and trimming spaces
+                action, // Format action
+                amount
+            });
+        }
+    });
+    // console.log(accountNumber, transactions)
+
+    return {
+        accountNumber,
+        tableContent: transactions
+    };
+};
+
 
 
 // Function to parse PDF file
-const parsePdfFile = (filePath) => {
+const parsePdfFile = (filePath, tableExtracter = extractTableContent) => {
     return new Promise((resolve, reject) => {
         const pdfParser = new PDFParser();
         pdfParser.on('pdfParser_dataError', errData => reject(errData.parserError));
         pdfParser.on('pdfParser_dataReady', pdfData => {
-            const tableContent = extractTableContent(pdfData);
+            const tableContent = tableExtracter(pdfData);
             resolve({tableContent})
         });
 
@@ -87,6 +115,48 @@ const extractTableContent = (pdfData) => {
         }
     });
     return tableContent;
+};
+
+ const drivewealthPDFParser = (pdfData) => {
+    const rows = [];
+    pdfData.Pages.forEach(page => {
+        
+        let rowKey = 0;
+        let row = []
+        page.Texts.forEach((text, index) => {
+            const diff = text.y - rowKey
+            if (diff.toFixed(3) >= 1) {
+                rowKey = text.y;
+                rows.push(row)
+                row = []
+            }
+            row.push(text.R.map(run => decodeText(run.T)).join(''));
+            if (index === page.Texts.length - 1) {
+                rows.push(row)
+            }
+        });
+    })
+    if (rows.length === 0) {
+        return rows
+    } 
+
+    const map = {}
+    const finalRows = []
+
+    rows.forEach(row => {  
+        const [date, action, amount, balance, ...rest] = row
+        const key = `${date}${action}${amount}${balance}`
+        const existingItem = map[key]
+        if (!existingItem) {
+            map[key] = row
+            finalRows.push(row)
+        } else {
+            const {groups: {description = ''} = {}} = (rest.join(' ') || '').match(/(?<orderNo>[A-Z]{4}\d{6})?(?<description>.{0,})/) || {}
+            existingItem.push(description)
+            // duplicate row spotted
+        }
+    }) 
+    return finalRows;
 };
 
 const tickerMap = {
@@ -315,6 +385,60 @@ const parseMS = (item, tableContent, i, file, dividends, transactions, account) 
     }
 }
 
+/*
+2024-07-10	WITHDRAW	292.58
+2024-07-18	DIV	44.1
+2024-07-18	DIVTAX	11.03
+2024-07-22	FEE	75
+2024-07-26	ADD_MONEY	41.93
+2024-10-18	DIV	22.88
+2024-10-18	DIVTAX	5.72
+2024-10-21	WITHDRAW	17.16
+*/
+
+const parseMSClientStat = (item, tableContent, i, file, dividends, transactions, account) => {
+    const {date, action, amount} = item
+    switch (action) {
+        case 'ADD_MONEY':
+            account.push({
+                Date: date,
+                Action: action,
+                Amount: amount,
+                Account: '499 339908'
+            })
+            break
+        case 'WITHDRAW':
+        case 'FEE':
+            account.push({
+                Date: date,
+                Action: 'WITHDRAW',
+                Amount: amount,
+                Account: '499 339908'
+            })
+            break
+        case 'DIV':
+            // console.log(units, stock)
+            dividends.push({
+                Date: date,
+                Stock: 'INTU',
+                Dividend: amount,
+                Tax: 0,
+                Account: '499 339908'
+            })
+            break
+        case 'DIVTAX':
+            // console.log(units, stock)
+            dividends.push({
+                Date: date,
+                Stock: 'INTU',
+                Dividend: 0,
+                Tax: amount,
+                Account: '499 339908'
+            })
+            break
+    }
+}
+
 const parserMap = {
     xls: parseXlsFile,
     pdf: parsePdfFile
@@ -329,7 +453,7 @@ const parseINDLedger = (item, tableContent, i, file, dividends, transactions, ac
     date = date.split(",")[0].trim()
     date = moment(date, 'DD MMM YYYY').format('YYYY-MM-DD')
     // BUY 2.0 shares of MSFT at $270.69
-    const {groups: g1} = description.match(/(SELL|BUY)\s(?<units>\d+\.\d+)\sshares\sof\s(?<stock>\w+)\sat\s\$(?<amount>\d+\.\d+)/) || {}
+    const {groups: g1} = description.match(/(SELL|BUY)\s(?<units>[\d\.]+)\sshares\sof\s(?<stock>\w+)\sat\s\$(?<amount>[\d\.]+)/) || {}
     const {groups: g2} = description.match(/(?:DIV|DIVTAX)\sof\s\$\-?\d+\.\d+\sagainst\s(?<stock>\w+)/) || {}
     const {units, stock} = g1 || {}
     const {stock: dividendStock} = g2 || {}
@@ -403,14 +527,192 @@ const parseINDLedger = (item, tableContent, i, file, dividends, transactions, ac
             break
     }
 }
+
+const parseDWLedger = (item, tableContent, i, file, dividends, transactions, account, getAccount, brokerage) => {
+
+    let [date, action, amount, balance, ...rest] = item
+    const {groups: {orderNo, description = ''} = {}} = (rest.join(' ') || '').match(/(?<orderNo>[A-Z]{4}\d{6})?(?<description>.{0,})/) || {}
+    const accountNumber = getAccount({date})
+    const validActions = [
+        'COMM',
+        'CSR',
+        'STCK',
+        'FEE',
+        'ACATS_CASH',
+        'INT',
+        'SPUR',
+        'SSAL',
+        'DIV',
+        'DIVTAX'
+
+    ]
+    if (!action || !validActions.includes(action)) {
+        return
+    }
+    // console.log(date, action, amount, balance, orderNo, description, '\n\n')
+    let isNegative = false
+    if (amount.includes('(')) {
+        isNegative = true
+    }
+    try {
+        amount = amount.replaceAll(/[\$\s\,\(\)]/g, '')
+        balance = balance.replaceAll(/[\$\s\,\(\)]/g, '')
+    } catch (e) {
+        // console.log(item, action, 'sdfsdfsd')
+        throw e
+    }
+    date = momentT.utc(date).tz('America/New_York').format('YYYY-MM-DD')
+    // BUY 2.0 shares of MSFT at $270.69
+    // AAPL dividend, $0.25/share
+    // AAPL tax, 25% withheld
+    // Sell 5 shares of TEAM at 166.595 PART fill
+    // Sell 0.25626247 shares of TEAM at 166.6 FULL fill
+    // Buy 8 shares of NVDA at 124.81 PART fill
+    // WIRE DEPOSIT IND Money
+
+    const {groups: g1} = description.match(/(Buy|Sell)\s(?<units>[\d+\.]+)\sshares\sof\s(?<stock>[\w\.]+)\sat\s[\$\s]?(?<amount>[\d\.]+)/) || {}
+    // const {groups: g1} = description.match(/(SELL|BUY)\s(?<units>\d+\.\d+)\sshares\sof\s(?<stock>\w+)\sat\s\$(?<amount>\d+\.\d+)/) || {}
+    
+    const {groups: g2} = description.match(/(?<stock>[\w\.]+)\sdividend\s?, \$(?<dividendPerShare>[\d\.]+)\/share/) || {}
+    const {groups: g3} = description.match(/(?<stock>[\w\.]+)\stax,\s(?<tax>[\d\.]+)%\swithheld/) || {}
+    const {groups: g5} = description.match(/base\=(?<baseBrokerage>[\d\.]+)/) || {}
+    const {units, stock, amount: amountPerShare} = g1 || {}
+    const {stock: dividendStock, dividendPerShare} = g2 || {}
+    const {stock: dividendTaxStock, tax: dividendTax} = g3 || {}
+    const {baseBrokerage} = g5 || {}
+
+    if (action === 'DIV' && description.includes('XTRF Transfer Cash To Account')) {
+        action = 'WITHDRAW'
+    }
+
+    switch (action) {
+        case 'COMM':
+            const fee = (amount - baseBrokerage).toFixed(2)
+            if (parseFloat(fee) !== 0) {
+                account.push({
+                    Date: date,
+                    Action: 'WITHDRAW',
+                    Amount: fee,
+                    Account: accountNumber
+                })
+                
+            }
+            brokerage[orderNo] = {amount, baseBrokerage}
+            break
+        case 'CSR':
+        case 'STCK':
+        case 'FEE':
+            if (parseFloat(amount) !== 0) {
+                account.push({
+                    Date: date,
+                    Action: 'ADD_MONEY',
+                    Amount: amount,
+                    Account: accountNumber
+                })
+                
+            }
+            break
+        case 'WITHDRAW':
+        case 'ACATS_CASH':
+            account.push({
+                Date: date,
+                Action: 'WITHDRAW',
+                Amount: amount,
+                Account: accountNumber
+            })
+            break
+        case 'INT':
+            account.push({
+                Date: date,
+                Action: 'INTEREST',
+                Amount: isNegative ? `-${amount}` : amount,
+                Account: accountNumber
+            })
+            break
+        case 'SPUR':
+            // console.log(units, stock)
+            transactions.push({
+                Date: date,
+                Action: 'BUY',
+                Unit: parseFloat(units).toFixed(9),
+                Stock: stock,
+                TotalAmount: amount,
+                OrderNo: orderNo,
+                Account: accountNumber
+            })
+            break
+        case 'SSAL':
+            // console.log(units, stock)
+            transactions.push({
+                Date: date,
+                Action: 'SELL',
+                Unit: parseFloat(units).toFixed(9),
+                Stock: stock,
+                TotalAmount: amount,
+                OrderNo: orderNo,
+                Account: accountNumber
+            })
+            break
+        case 'DIV':
+            // console.log(units, stock)
+            dividends.push({
+                Date: date,
+                Stock: dividendStock,
+                Dividend: amount,
+                Tax: 0,
+                DividendPerShare: dividendPerShare,
+                Account: accountNumber
+            })
+            break
+        case 'DIVTAX':
+            // console.log(units, stock)
+            dividends.push({
+                Date: date,
+                Stock: dividendTaxStock,
+                Dividend: 0,
+                Tax: amount,
+                TaxPercentage: dividendTax,
+                Account: accountNumber
+            })
+            break
+    }
+}
+/*
+
+Date	Action	Amount
+2024-07-10	WITHDRAW	292.58
+2024-07-18	DIV	44.1
+2024-07-18	DIVTAX	11.03
+2024-07-22	FEE	75
+2024-07-26	ADD_MONEY	41.93
+2024-10-18	DIV	22.88
+2024-10-18	DIVTAX	5.72
+2024-10-21	WITHDRAW	17.16
+*/
 const supportedRegexes = [
     {
-        regex: /.*(?<fileType>(ACCOUNT_STATEMENT|XXXX|MS_Client|INTU_TRADE)).*\.(?<ext>(pdf))$/,
+        regex: /.*(?<fileType>(ACCOUNT_STATEMENT|XXXX|MS_Client|ClientStat|INTU_TRADE)).*\.(?<ext>(pdf))$/,
+    },
+    {
+        regex: /.*(?<fileType>ETRADE_LAST_TXNS).*\.(?<ext>(xlsx))$/,
+        customParser: parseETradeFinalXlsFile
     },
     {
         regex:  /.*(?<fileType>(IND-LEDGER)).*\.(?<ext>(xls))$/,
         getAccount: ({date}) => {
             const timestamp = moment(date, 'DD MMM YYYY, hh:mm A')
+            const cutOff = moment('29 Apr 2024, 10:02 AM', 'DD MMM YYYY, hh:mm A')
+            if (timestamp < cutOff) {
+                return 'INDW001INZU000216'
+            }
+            return 'WREV000009'
+        }
+    },
+    {
+        regex: /.*(?<fileType>(DRIVEW)).*\.(?<ext>(pdf))$/,
+        tableExtracter: drivewealthPDFParser,
+        getAccount: ({date}) => {
+            const timestamp = moment(date)
             const cutOff = moment('29 Apr 2024, 10:02 AM', 'DD MMM YYYY, hh:mm A')
             if (timestamp < cutOff) {
                 return 'INDW001INZU000216'
@@ -463,16 +765,17 @@ export const parseStatements = async (input) => {
         const dividends = []
         const transactions = []
         const account = []
+        const brokerage = {}
 
         await Promise.all(input.map(async ({filePath, fileName}) => {
             const file = `${filePath}${fileName}`
-            const {regex: reg, getAccount} = supportedRegexes.find(({regex}) => fileName.match(regex)) || {}
+            const {regex: reg, getAccount, tableExtracter, customParser} = supportedRegexes.find(({regex}) => fileName.match(regex)) || {}
             if (!reg) {
                 return
             }
             const {groups: {fileType, ext}} = fileName.match(reg)
-            const parser = parserMap[ext]
-            const {tableContent} = await parser(filePath);
+            const parser = customParser || parserMap[ext]
+            const {tableContent} = await parser(filePath, tableExtracter);
 
             for (let i = 0; i < tableContent.length - 1 ; i++) {
                 const item = tableContent[i]
@@ -487,29 +790,74 @@ export const parseStatements = async (input) => {
                     case "MS_Client":
                         parseMS(item, tableContent, i, file, dividends, transactions, account)
                         break
+                    case "ETRADE_LAST_TXNS":
+                        parseMSClientStat(item, tableContent, i, file, dividends, transactions, account)
+                        break
                     case 'INTU_TRADE':
                         parseINTU(item, tableContent, i, file, dividends, transactions, account)
                         break
                     case 'IND-LEDGER':
-                        parseINDLedger(item, tableContent, i, file, dividends, transactions, account, getAccount)
+                        parseINDLedger(item, tableContent, i, file, dividends, transactions, account, getAccount, brokerage)
                         break
+                    case 'DRIVEW':
+                        parseDWLedger(item, tableContent, i, file, dividends, transactions, account, getAccount, brokerage)
+                    break
                 }
             }
         }))
 
+        const map = {}
+        const finalTransactions = []
+        
+        /*
+        Date: date,
+                Action: 'SELL',
+                Unit: parseFloat(units).toPrecision(9),
+                Stock: stock,
+                TotalAmount: amount,
+                OrderNo: orderNo,
+                Account: accountNumber
+        */
+
+                transactions.forEach(txn => {
+                    
+                    if (txn.OrderNo) {
+                        const t = map[txn.OrderNo]
+                        if (!t) {
+                            map[txn.OrderNo] = txn
+                            const {amount = 0, baseBrokerage = 0} = brokerage[txn.OrderNo] || {}
+                            if (baseBrokerage) {
+                                txn.TotalAmount = (parseFloat(txn.TotalAmount) + parseFloat(baseBrokerage) * (txn.Action === 'SELL' ? -1 : 1)).toFixed(2)
+                            }
+                            // txn.Fee = (amount - baseBrokerage).toFixed(2)
+                            
+                            // txn.BaseBrokerage = baseBrokerage
+                            finalTransactions.push(txn)
+                        } else {
+                            t.Unit = (parseFloat(txn.Unit) + parseFloat(t.Unit)).toFixed(9)
+                            t.TotalAmount = (parseFloat(txn.TotalAmount) + parseFloat(t.TotalAmount)).toFixed(2)
+                        }
+                        
+                    } else {
+                        finalTransactions.push(txn)
+                    }
+                })
+
         const jsonData = [
             {
                 sheetName: 'Stock Transactions',
-                content: [{ data: transactions.sort((a, b) => new Date(a.Date) - new Date(b.Date))
+                content: [{ data: finalTransactions.sort((a, b) => new Date(a.Date) - new Date(b.Date))
                         .map(txn => ({
                             Action: txn.Action,
                             Date: txn.Date,
                             Stock: txn.Stock,
                             Unit: txn.Unit,
                             TotalAmount: txn.TotalAmount,
+                            OrderNo: txn.OrderNo,
                             Account: txn.Account,
                             type: txn.type
                         })), headers: ['Action', 'Date', 'Stock', 'Unit', 'TotalAmount', 'Account', 'type'] }]
+                        // })), headers: ['Action', 'Date', 'Stock', 'Unit', 'TotalAmount', 'Account', 'type',  'OrderNo', 'Fee', 'BaseBrokerage',] }]
             },
             {
                 sheetName: 'Dividends',
