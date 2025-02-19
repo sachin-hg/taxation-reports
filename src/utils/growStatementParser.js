@@ -554,13 +554,10 @@ const parseDWLedger = (item, tableContent, i, file, dividends, transactions, acc
     if (amount.includes('(')) {
         isNegative = true
     }
-    try {
+   
         amount = amount.replaceAll(/[\$\s\,\(\)]/g, '')
         balance = balance.replaceAll(/[\$\s\,\(\)]/g, '')
-    } catch (e) {
-        // console.log(item, action, 'sdfsdfsd')
-        throw e
-    }
+   
     date = momentT.utc(date).tz('America/New_York').format('YYYY-MM-DD')
     // BUY 2.0 shares of MSFT at $270.69
     // AAPL dividend, $0.25/share
