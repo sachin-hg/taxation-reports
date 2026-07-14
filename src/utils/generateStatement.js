@@ -9,20 +9,39 @@ import {fetchStockPrice} from './stockPrice.js'
 import {fetchCompanyDetails} from './companyDetails.js'
 import {generateExcelFromJson} from './writeXls.js'
 import {getDividendsForTickers} from './dividends.js'
+export const ADD = 'add';
+export const SUBTRACT = 'subtract';
+export const MULTIPLY = 'multiply';
+export const DIVIDE = 'divide';
 
-const ADD = 'add'
-const SUBTRACT = 'subtract'
-function preciseMath(operation, a, b) {
+export function preciseMath(operation, a, b) {
     const scale = 1e9;
     const aScaled = Math.round(a * scale);
     const bScaled = Math.round(b * scale);
 
     let result;
-    if (operation === ADD) result = aScaled + bScaled;
-    if (operation === SUBTRACT) result = aScaled - bScaled;
 
-    return (result / scale).toFixed(9);
+    switch (operation) {
+        case ADD:
+            result = (aScaled + bScaled) / scale;
+            break;
+        case SUBTRACT:
+            result = (aScaled - bScaled) / scale;
+            break;
+        case MULTIPLY:
+            result = (aScaled * bScaled) / (scale * scale);
+            break;
+        case DIVIDE:
+            if (bScaled === 0) throw new Error("Division by zero");
+            result = aScaled / bScaled;
+            break;
+        default:
+            throw new Error(`Unsupported operation: ${operation}`);
+    }
+
+    return parseFloat(result.toFixed(9));
 }
+
 
 const assignUniqueIds = (transactions) => {
     return transactions.map(transaction => ({
@@ -287,7 +306,7 @@ const convertToINR = (usdValue, conversionDate) => {
 
 const calculatePeakValues = async (holdings, stockHoldingsMap, startDate, endDate, currency) => {
     const startUnix = startDate.unix();
-    const endUnix = endDate.unix();
+    const endUnix = endDate.add(1, 'days').unix();
 
     for (const holding of holdings) {
         const { stock, id } = holding;
@@ -320,13 +339,14 @@ const calculatePeakValues = async (holdings, stockHoldingsMap, startDate, endDat
 };
 
 const calculateClosingBalance = async (holdings, stockHoldingsMap, endDate, currency) => {
-    const endUnix = endDate.unix();
+    const endUnix = endDate.add(1, 'days').unix();
     const startUnix = endDate.subtract(7, 'days').unix(); // Start from 7 days before endDate to account for market closure
 
     for (const holding of holdings) {
         const { stock, closingUnits } = holding;
         let stockData = await fetchStockPrice(stock, startUnix, endUnix);
         const data = stockData.sort((a, b) => moment(b.Date) - moment(a.Date))[0] || {};
+        console.log(data)
 
         const closingPrice = parseFloat(data.Close);
         const closingDate = data.Date;
@@ -415,15 +435,21 @@ const generatePAndL = (holdings, transactions, bankStatements, startDate, endDat
             const buyValue = unitsSold * initialValue / openingUnits
             const sellValue = unitsSold * transactionsMap[saleId][0].TotalAmount / transactionsMap[saleId][0].Unit
             const gain = sellValue - buyValue
+            const buyValueINR = convertToINR(buyValue, buyDate)
+            const sellValueINR = convertToINR(sellValue, saleDate)
+            const gainINR = sellValueINR - buyValueINR
             // Security	Sale date	Sold Unit(s)	Sell Value($)	Buy Value($)	Gain/Loss($)	Gain/Loss(INR)	Buy Date(s)	Buy Qty
             pushToArray.push({
                 Security: stock,
                 'Sale Date': saleDate.format('YYYY-MM-DD'),
                 'Sold Unit(s)': unitsSold,
                 'Sell Value($)': sellValue,
+                'Sell Value(INR)': sellValueINR,// 
                 'Buy Value($)': buyValue,
+                'Buy Value(INR)': buyValueINR, //
                 'Gain/Loss($)': gain,
-                'Gain/Loss(INR)': convertToINR(gain, saleDate),
+                // 'Gain/Loss(INR)': convertToINR(gain, saleDate),
+                'Gain/Loss(INR)': gainINR,
                 'Buy Date': buyDate.format('YYYY-MM-DD'),
                 'Buy Qty': unitsSold,
                 'Buy Amount($)': buyValue
@@ -434,12 +460,12 @@ const generatePAndL = (holdings, transactions, bankStatements, startDate, endDat
     res.push({
         title: 'Short Term Capital Gains (Holding Period<24 months)',
         data: shortTerm,
-        headers: ['Security', 'Sale Date', 'Sold Unit(s)', 'Sell Value($)', 'Buy Value($)', 'Gain/Loss($)', 'Gain/Loss(INR)', 'Buy Date', 'Buy Qty', 'Buy Amount($)']
+        headers: ['Security', 'Sale Date', 'Sold Unit(s)', 'Sell Value($)', 'Sell Value(INR)', 'Buy Value($)', 'Buy Value(INR)', 'Gain/Loss($)', 'Gain/Loss(INR)', 'Buy Date', 'Buy Qty', 'Buy Amount($)']
     })
     res.push({
         title: 'Long Term Capital Gains (Holding Period>24 months)',
         data: longTerm,
-        headers: ['Security', 'Sale Date', 'Sold Unit(s)', 'Sell Value($)', 'Buy Value($)', 'Gain/Loss($)', 'Gain/Loss(INR)', 'Buy Date', 'Buy Qty', 'Buy Amount($)']
+        headers: ['Security', 'Sale Date', 'Sold Unit(s)', 'Sell Value($)', 'Sell Value(INR)', 'Buy Value($)', 'Buy Value(INR)', 'Gain/Loss($)', 'Gain/Loss(INR)', 'Buy Date', 'Buy Qty', 'Buy Amount($)']
     })
     res.push({
         title: 'Interest',
@@ -461,7 +487,7 @@ const generateFA = async (holdings) => {
     tickers = uniq(tickers)
     const companyDetails = await fetchCompanyDetails(tickers)
     const data = holdings.map(holding => {
-        const {stock, buyDate, initialValue, amountReceivedFromSelling, dividend, peakValue, closingBalance} = holding
+        const {stock, buyDate, initialValue, closingUnits, amountReceivedFromSelling, dividend, peakValue, closingBalance} = holding
         const {name, address, zipCode} = companyDetails[stock]
         // console.log(companyName, '\n\n\n')
         return {
@@ -532,6 +558,11 @@ const createAccountStatement = (transactions, dividends, bankStatements, startDa
     const groupedByAccount = groupBy(txns, 'Account')
     const validAccounts = []
     const dta = Object.keys(groupedByAccount).filter(accountNum => {
+        try {
+            const {[accountNum]: {openingDate}} = accounts
+        } catch (e) {
+            console.log(accountNum, accounts)
+        }
         const {[accountNum]: {openingDate}} = accounts
         return moment(openingDate).isSameOrBefore(endDate)
     }).map(accountNum => {
@@ -564,6 +595,7 @@ const createAccountStatement = (transactions, dividends, bankStatements, startDa
                     break
 
                 case 'WITHDRAW':
+                case 'FEE':
                     balance -= Amount
                     if (DateObj.isBetween(startDate, endDate, null, '[]')) {
                         closingBalance = balance
@@ -582,6 +614,11 @@ const createAccountStatement = (transactions, dividends, bankStatements, startDa
 
             }
         })
+        try {
+            const {[accountNum]: {name, address, zip, openingDate}} = accounts 
+        } catch (e) {
+            console.log(accountNum, accounts)
+        }
         const {[accountNum]: {name, address, zip, openingDate}} = accounts
         validAccounts.push({
             'Broker A/C No': accountNum,
@@ -639,8 +676,8 @@ export const mergeDividendsAndTax = (dividends) => {
             map[key] = obj
             res.push(obj)
         }
-        obj.Dividend = (parseFloat(obj.Dividend || 0) + parseFloat(Dividend)).toFixed(2)
-        obj.Tax = (parseFloat(obj.Tax || 0) + parseFloat(Tax)).toFixed(2)
+        obj.Dividend = (parseFloat(obj.Dividend || 0) + parseFloat(Dividend || 0)).toFixed(2)
+        obj.Tax = (parseFloat(obj.Tax || 0) + parseFloat(Tax || 0)).toFixed(2)
     })
     return res
 }
@@ -663,12 +700,15 @@ export const generateHoldingStatement = async ({
 
     switch (type) {
         case 'PNL':
-            startDate = `${year}-04-01`
-            endDate = `${parseInt(year) + 1}-03-31`
+            startDate = `${year}-01-01`
+            endDate = `${year}-12-31`
             break
         case 'FA':
             startDate = `${year}-01-01`
             endDate = `${year}-12-31`
+
+            // startDate = `${year}-04-01`
+            // endDate = `${parseInt(year) + 1}-03-31`
             currency = 'INR'
             break
     }

@@ -1,6 +1,7 @@
 import yf from 'yahoo-finance2'
 import merge from 'lodash/merge'
 import moment from 'moment'
+import { preciseMath, MULTIPLY } from './generateStatement';
 // Function to get stock split history for a single ticker
 const getStockSplitHistoryForTicker = async (ticker) => {
     try {
@@ -72,10 +73,11 @@ export const handleStockSplits = async (transactions, stockSplitMap = {}) => {
             let adjustedQuantity = Unit;
             for (const splitDate in splitDates) {
                 if (moment(Date).isBefore(splitDate)) {
+                    // adjustedQuantity = preciseMath(adjustedQuantity, splitDates[splitDate], MULTIPLY);
                     adjustedQuantity *= splitDates[splitDate];
                 }
             }
-            return { ...transaction, Unit: adjustedQuantity.toPrecision ? adjustedQuantity.toPrecision(9) : adjustedQuantity };
+            return { ...transaction, Unit: adjustedQuantity.toPrecision ? adjustedQuantity.toString() : adjustedQuantity };
         } else {
             return transaction;
         }

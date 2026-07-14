@@ -36,6 +36,7 @@ export const fetchStockPrice = async (stock, startDate, endDate) => {
       interval: '1d',
       events: 'history'
     });
+    // console.log(stockData)
     stockData = stockData.map(({date, close, high, low, open}) => {
         return {
             Date: moment(date).format('YYYY-MM-DD'),

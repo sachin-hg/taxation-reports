@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "predev": "node --experimental-modules autoUpdateRates.mjs",
-    "dev": "NODE_OPTIONS='--inspect' next dev",
+    "dev": "PORT=3001 NODE_OPTIONS='--inspect' next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
